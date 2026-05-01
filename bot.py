@@ -4,8 +4,6 @@ import ssl
 import re
 import os
 from urllib.parse import urlparse
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -569,39 +567,26 @@ async def do_scan(update: Update, url: str):
         await wait_msg.edit_text(f"Hata: {e}")
 
 
-# ---------------------------------------------------------------------------
-# Basit HTTP health check (Render.com icin)
-# ---------------------------------------------------------------------------
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, *args):
-        pass
-
-
-def start_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    server.serve_forever()
-
-
 def main():
-    # Health check server'i ana thread'de baslat (Render icin PORT binding zorunlu)
-    t = threading.Thread(target=start_health_server, daemon=True)
-    t.start()
-    print(f"Health check server baslatildi: port {PORT}")
-
-    import time
-    time.sleep(2)  # Health check hazir olmadan bot baslamasin
-
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("BugWol bot polling baslatiliyor...")
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+
+    if WEBHOOK_URL:
+        # Render / production: webhook modu
+        print(f"Webhook modu: {WEBHOOK_URL}/webhook  port:{PORT}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=f"{WEBHOOK_URL}/webhook",
+            url_path="webhook",
+        )
+    else:
+        # Yerel gelistirme: polling modu
+        print("Polling modu (yerel)...")
+        app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
