@@ -570,6 +570,7 @@ async def do_scan(update: Update, url: str):
 
 async def run():
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bugwol-bot.onrender.com")
+    webhook_path = "/tg"
 
     # Telegram bot kur
     tg_app = Application.builder().token(BOT_TOKEN).build()
@@ -577,37 +578,45 @@ async def run():
     tg_app.add_handler(CommandHandler("help", start))
     tg_app.add_handler(CommandHandler("scan", scan_command))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
     await tg_app.initialize()
     await tg_app.start()
 
-    # Webhook kaydet
-    await tg_app.bot.set_webhook(
-        url=f"{WEBHOOK_URL}/tg",
-        drop_pending_updates=True,
-    )
-    print(f"Webhook set: {WEBHOOK_URL}/tg")
-
-    # aiohttp server: health + webhook
+    # aiohttp: ONCE baslat, sonra webhook kaydet
     async def health(request):
         return web.Response(text="OK")
 
     async def telegram_handler(request):
-        data = await request.json()
-        update = Update.de_json(data, tg_app.bot)
-        await tg_app.process_update(update)
+        try:
+            data = await request.json()
+            update = Update.de_json(data, tg_app.bot)
+            await tg_app.process_update(update)
+        except Exception as e:
+            print(f"Update error: {e}")
         return web.Response(text="OK")
 
     http_app = web.Application()
     http_app.router.add_get("/", health)
-    http_app.router.add_get("/health", health)
-    http_app.router.add_post("/tg", telegram_handler)
+    http_app.router.add_post(webhook_path, telegram_handler)
 
     runner = web.AppRunner(http_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    print(f"HTTP server baslatildi, port: {PORT}")
+    print(f"HTTP server port {PORT} — baslatildi")
+
+    # Webhook kaydi: arka planda, hata olursa tekrar dene
+    async def register_webhook():
+        url = f"{WEBHOOK_URL}{webhook_path}"
+        for attempt in range(10):
+            await asyncio.sleep(5)
+            try:
+                await tg_app.bot.set_webhook(url=url, drop_pending_updates=True)
+                print(f"Webhook kaydedildi: {url}")
+                return
+            except Exception as e:
+                print(f"Webhook deneme {attempt+1} basarisiz: {e}")
+
+    asyncio.create_task(register_webhook())
 
     # Sonsuza kadar calis
     await asyncio.Event().wait()
