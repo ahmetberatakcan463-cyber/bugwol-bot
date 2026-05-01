@@ -1,10 +1,12 @@
 import asyncio
+import json
 import socket
 import ssl
 import re
 import os
 from urllib.parse import urlparse
 import requests
+from aiohttp import web
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -566,23 +568,53 @@ async def do_scan(update: Update, url: str):
         await wait_msg.edit_text(f"Hata: {e}")
 
 
-def main():
+async def run():
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bugwol-bot.onrender.com")
 
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", start))
-    app.add_handler(CommandHandler("scan", scan_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Telegram bot kur
+    tg_app = Application.builder().token(BOT_TOKEN).build()
+    tg_app.add_handler(CommandHandler("start", start))
+    tg_app.add_handler(CommandHandler("help", start))
+    tg_app.add_handler(CommandHandler("scan", scan_command))
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print(f"Webhook modu baslatiliyor: {WEBHOOK_URL}/tg  port:{PORT}")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="tg",
-        webhook_url=f"{WEBHOOK_URL}/tg",
+    await tg_app.initialize()
+    await tg_app.start()
+
+    # Webhook kaydet
+    await tg_app.bot.set_webhook(
+        url=f"{WEBHOOK_URL}/tg",
         drop_pending_updates=True,
     )
+    print(f"Webhook set: {WEBHOOK_URL}/tg")
+
+    # aiohttp server: health + webhook
+    async def health(request):
+        return web.Response(text="OK")
+
+    async def telegram_handler(request):
+        data = await request.json()
+        update = Update.de_json(data, tg_app.bot)
+        await tg_app.process_update(update)
+        return web.Response(text="OK")
+
+    http_app = web.Application()
+    http_app.router.add_get("/", health)
+    http_app.router.add_get("/health", health)
+    http_app.router.add_post("/tg", telegram_handler)
+
+    runner = web.AppRunner(http_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"HTTP server baslatildi, port: {PORT}")
+
+    # Sonsuza kadar calis
+    await asyncio.Event().wait()
+
+
+def main():
+    asyncio.run(run())
 
 
 if __name__ == "__main__":
