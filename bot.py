@@ -571,21 +571,14 @@ async def do_scan(update: Update, url: str):
 async def run():
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bugwol-bot.onrender.com")
     webhook_path = "/tg"
+    tg_app = None
 
-    # Telegram bot kur
-    tg_app = Application.builder().token(BOT_TOKEN).build()
-    tg_app.add_handler(CommandHandler("start", start))
-    tg_app.add_handler(CommandHandler("help", start))
-    tg_app.add_handler(CommandHandler("scan", scan_command))
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    await tg_app.initialize()
-    await tg_app.start()
-
-    # aiohttp: ONCE baslat, sonra webhook kaydet
     async def health(request):
         return web.Response(text="OK")
 
     async def telegram_handler(request):
+        if tg_app is None:
+            return web.Response(text="starting", status=503)
         try:
             data = await request.json()
             update = Update.de_json(data, tg_app.bot)
@@ -594,31 +587,30 @@ async def run():
             print(f"Update error: {e}")
         return web.Response(text="OK")
 
+    # 1. HTTP server ILKONCE baslar — Render health check hemen gececek
     http_app = web.Application()
     http_app.router.add_get("/", health)
     http_app.router.add_post(webhook_path, telegram_handler)
-
     runner = web.AppRunner(http_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    print(f"HTTP server port {PORT} — baslatildi")
+    print(f"HTTP server port {PORT} — health check hazir")
 
-    # Webhook kaydi: arka planda, hata olursa tekrar dene
-    async def register_webhook():
-        url = f"{WEBHOOK_URL}{webhook_path}"
-        for attempt in range(10):
-            await asyncio.sleep(5)
-            try:
-                await tg_app.bot.set_webhook(url=url, drop_pending_updates=True)
-                print(f"Webhook kaydedildi: {url}")
-                return
-            except Exception as e:
-                print(f"Webhook deneme {attempt+1} basarisiz: {e}")
+    # 2. Telegram bot arka planda baslar
+    tg_app = Application.builder().token(BOT_TOKEN).build()
+    tg_app.add_handler(CommandHandler("start", start))
+    tg_app.add_handler(CommandHandler("help", start))
+    tg_app.add_handler(CommandHandler("scan", scan_command))
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    await tg_app.initialize()
+    await tg_app.start()
 
-    asyncio.create_task(register_webhook())
+    # 3. Webhook kaydet
+    url = f"{WEBHOOK_URL}{webhook_path}"
+    await tg_app.bot.set_webhook(url=url, drop_pending_updates=True)
+    print(f"Webhook aktif: {url}")
 
-    # Sonsuza kadar calis
     await asyncio.Event().wait()
 
 
