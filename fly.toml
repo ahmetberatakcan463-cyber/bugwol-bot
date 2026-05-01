@@ -1,0 +1,15 @@
+app = "bugwol-bot"
+primary_region = "fra"
+
+[build]
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
