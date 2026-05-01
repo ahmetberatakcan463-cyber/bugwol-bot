@@ -587,17 +587,21 @@ def start_health_server():
 
 
 def main():
-    # Health check server'i arka planda baslat (Render icin gerekli)
+    # Health check server'i ana thread'de baslat (Render icin PORT binding zorunlu)
     t = threading.Thread(target=start_health_server, daemon=True)
     t.start()
+    print(f"Health check server baslatildi: port {PORT}")
+
+    import time
+    time.sleep(2)  # Health check hazir olmadan bot baslamasin
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print(f"BugWol calisiyor... (health check port: {PORT})")
-    app.run_polling(drop_pending_updates=True)
+    print("BugWol bot polling baslatiliyor...")
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
