@@ -145,13 +145,17 @@ def check_cors_reflect(url):
     except:
         return False
 
+def check_one_file(base, item):
+    r = fetch(base + item["path"], timeout=5)
+    if r and r.status_code == 200 and check_content(r.text, item["check"]):
+        return {"path": item["path"], "sev": item["sev"], "size": len(r.content)}
+    return None
+
 def check_files(base):
-    found = []
-    for item in CRITICAL_PATHS:
-        r = fetch(base + item["path"])
-        if r and r.status_code == 200 and check_content(r.text, item["check"]):
-            found.append({"path": item["path"], "sev": item["sev"], "size": len(r.content)})
-    return found
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        results = ex.map(lambda item: check_one_file(base, item), CRITICAL_PATHS)
+    return [r for r in results if r]
 
 def check_robots(base):
     paths = []
