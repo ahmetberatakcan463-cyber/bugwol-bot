@@ -3,9 +3,6 @@ import socket
 import ssl
 import re
 import os
-import time
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 import requests
 from telegram import Update
@@ -569,43 +566,23 @@ async def do_scan(update: Update, url: str):
         await wait_msg.edit_text(f"Hata: {e}")
 
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def log_message(self, *args):
-        pass
+def main():
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bugwol-bot.onrender.com")
 
-
-def start_health_server():
-    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-    server.serve_forever()
-
-
-def make_app():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    return app
 
-
-def main():
-    # Health server: non-daemon → process hep ayakta kalir
-    t = threading.Thread(target=start_health_server, daemon=False)
-    t.start()
-    print(f"Health server baslatildi, port: {PORT}")
-
-    # Bot: hata olursa yeniden baslat
-    while True:
-        try:
-            print("Bot polling baslatiliyor...")
-            make_app().run_polling(drop_pending_updates=True)
-        except Exception as e:
-            print(f"Bot hatasi: {e!r} — 5s sonra yeniden baslatiliyor...")
-            time.sleep(5)
+    print(f"Webhook modu baslatiliyor: {WEBHOOK_URL}/tg  port:{PORT}")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path="tg",
+        webhook_url=f"{WEBHOOK_URL}/tg",
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
