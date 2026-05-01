@@ -2,13 +2,13 @@ import asyncio
 import socket
 import ssl
 import re
-import json
+import os
 from urllib.parse import urlparse
 import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-BOT_TOKEN = "8764847094:AAGurxxPQXRcjLRqmhwmdBfI0SjlkuXjMz0"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8764847094:AAGurxxPQXRcjLRqmhwmdBfI0SjlkuXjMz0")
 
 # Kullanicinin son tarama sonuclarini tutan bellegi
 user_sessions = {}
